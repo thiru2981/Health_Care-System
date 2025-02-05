@@ -1,0 +1,105 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from cryptography.fernet import Fernet
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+import io
+
+# Load your healthcare dataset
+df = pd.read_csv('dataset.csv')
+
+# Assume the target variable is named 'target' (binary classification)
+# You may need to adapt this based on the actual structure of your dataset
+X = df1[['age', 'sex', 'cp', 'trestbps','chol','fbs','restecg','thalach','exang','oldpeak','slope','ca','thal']]
+y = df1['target']
+
+# Split the dataset into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Standardize the features (normalize)
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+# Convert data to PyTorch tensors
+X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
+y_train_tensor = torch.tensor(y_train.values, dtype=torch.float32)
+
+# Build a simple neural network model
+class NeuralNetwork(nn.Module):
+    def init(self):
+        super(NeuralNetwork, self).init()
+        self.fc1 = nn.Linear(13, 64)
+        self.relu1 = nn.ReLU()
+        self.fc2 = nn.Linear(64, 32)
+        self.relu2 = nn.ReLU()
+        self.fc3 = nn.Linear(32, 1)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.relu1(x)
+        x = self.fc2(x)
+        x = self.relu2(x)
+        x = self.fc3(x)
+        x = self.sigmoid(x)
+        return x
+
+model = NeuralNetwork()
+
+# Loss and optimizer
+criterion = nn.BCELoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# Training the model
+for epoch in range(10):
+    model.train()
+    optimizer.zero_grad()
+    outputs = model(X_train_tensor)
+    loss = criterion(outputs, y_train_tensor.view(-1, 1))
+    loss.backward()
+    optimizer.step()
+
+# Save the model to a file
+torch.save(model.state_dict(), 'encrypted models/model1.pth')
+
+# Generate a Fernet encryption key
+key = Fernet.generate_key()
+
+# Save the Fernet encryption key to a file
+with open('encrypted models/encryption_key1.key', 'wb') as key_file:
+    key_file.write(key)
+
+# Encrypt the model
+model_encrypted = Fernet(key).encrypt(open('encrypted models/model1.pth', 'rb').read())
+
+# Save the encrypted model to a file
+with open('encrypted models/model1.encrypted', 'wb') as f:
+    f.write(model_encrypted)
+
+# Later, when you want to decrypt the model:
+
+# Load the Fernet encryption key from the file
+with open('encrypted models/encryption_key1.key', 'rb') as key_file:
+    key = key_file.read()
+
+# Decrypt the model using the loaded Fernet encryption key
+model_encrypted = open('encrypted models/model1.encrypted', 'rb').read()
+model_decrypted = Fernet(key).decrypt(model_encrypted)
+
+# Load the decrypted model
+model.load_state_dict(torch.load(io.BytesIO(model_decrypted)))
+
+# Evaluate the model on the test set
+X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
+y_test_tensor = torch.tensor(y_test.values, dtype=torch.float32)
+
+model.eval()
+with torch.no_grad():
+    outputs = model(X_test_tensor)
+    loss = criterion(outputs, y_test_tensor.view(-1, 1))
+    accuracy = ((outputs > 0.5) == y_test_tensor.view(-1, 1)).float().mean()
+
+print(f'Test Loss: {loss.item():.4f}, Test Accuracy: {accuracy.item():.4f}')
